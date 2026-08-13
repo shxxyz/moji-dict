@@ -202,6 +202,62 @@ final class MojiQuickLookTests: XCTestCase {
         XCTAssertNil(examples.first?.chinese)
     }
 
+    func testWordDetailToleratesDuplicateOrderingIDs() throws {
+        let data = Data(
+            """
+            {
+              "word": {
+                "id":"198977106",
+                "spell":"先々",
+                "pron":"さきざき",
+                "subdetailsIds":["88996","88997","88996"],
+                "exampleIds":["65924","65925","65924"]
+              },
+              "subdetails": [
+                {
+                  "id":"88996",
+                  "relaId":"88996",
+                  "title":"将来，后日前途",
+                  "lang":"zh-CN"
+                },
+                {
+                  "id":"jp-88996",
+                  "relaId":"88996",
+                  "title":"遠い将来。行く末。前途。",
+                  "lang":"ja"
+                }
+              ],
+              "examples": [
+                {
+                  "id":"65924",
+                  "relaId":"65924",
+                  "subdetailsId":"88996",
+                  "title":"先々が思いやられる。",
+                  "lang":"ja"
+                },
+                {
+                  "id":"zh-65924",
+                  "relaId":"65924",
+                  "subdetailsId":"88996",
+                  "title":"前途可想而知。",
+                  "lang":"zh-CN"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(WordDetailResponse.self, from: data)
+        let definition = try XCTUnwrap(response.definitionGroups.first)
+
+        XCTAssertEqual(response.definitionGroups.count, 1)
+        XCTAssertEqual(definition.id, "88996")
+        XCTAssertEqual(definition.japanese, "遠い将来。行く末。前途。")
+        XCTAssertEqual(definition.examples.count, 1)
+        XCTAssertEqual(definition.examples.first?.japanese, "先々が思いやられる。")
+        XCTAssertEqual(definition.examples.first?.chinese, "前途可想而知。")
+    }
+
     func testRubySegmentationAnnotatesOnlyKanjiRuns() {
         XCTAssertEqual(
             RubySegmenter.segments(base: "踏む", reading: "ふむ"),
@@ -445,6 +501,13 @@ final class MojiQuickLookTests: XCTestCase {
             XCTAssertFalse(detail.word?.spell?.isEmpty ?? true)
             XCTAssertFalse(detail.definitionGroups.isEmpty)
         }
+
+        let sakisakiSearch = try await client.search("先々")
+        let sakisakiWord = try XCTUnwrap(sakisakiSearch.word?.list?.first)
+        let sakisakiDetail = try await client.wordDetail(id: sakisakiWord.targetId)
+        XCTAssertEqual(sakisakiDetail.word?.spell, "先々")
+        XCTAssertFalse(sakisakiDetail.definitionGroups.isEmpty)
+        _ = sakisakiDetail.unassignedExampleGroups
     }
 
     func testLiveForvoWhenEnabled() async throws {

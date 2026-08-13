@@ -234,12 +234,23 @@ struct WordDetailResponse: Decodable, Sendable {
 
     private var definitionOrder: [String: Int] {
         let ids = custo?.subdetailsIds ?? word?.subdetailsIds ?? []
-        return Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($0.element, $0.offset) })
+        return Self.firstOccurrenceOrder(in: ids)
     }
 
     private var exampleOrder: [String: Int] {
         let ids = custo?.exampleIds ?? word?.exampleIds ?? []
-        return Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($0.element, $0.offset) })
+        return Self.firstOccurrenceOrder(in: ids)
+    }
+
+    private static func firstOccurrenceOrder(
+        in identifiers: [String]
+    ) -> [String: Int] {
+        var order: [String: Int] = [:]
+        for (offset, identifier) in identifiers.enumerated()
+        where order[identifier] == nil {
+            order[identifier] = offset
+        }
+        return order
     }
 
     private static func pairExamples(

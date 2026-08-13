@@ -67,8 +67,8 @@ swift test
 `Info.plist` のアプリバージョンと一致する `v*` タグを push すると、GitHub Actions がテスト、パッケージ作成、署名の検証を行い、バージョン付きの `.zip` と SHA-256 チェックサムを GitHub Releases に公開します。
 
 ```bash
-git tag v0.14.3
-git push origin v0.14.3
+git tag v0.14.4
+git push origin v0.14.4
 ```
 
 タグがすでに存在する場合は、GitHub の Actions ページから `Build and Release` を手動実行し、対象のタグを入力することで再ビルドまたは Release の添付ファイル更新ができます。通常のブランチへの push では Release は作成されません。
