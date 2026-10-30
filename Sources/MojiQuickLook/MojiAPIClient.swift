@@ -5,8 +5,11 @@ enum MojiAPIError: LocalizedError, Sendable {
     case invalidResponse
     case httpStatus(Int)
     case rateLimited
+    case requestBlocked
     case missingWord
     case authenticationFailed(String?)
+    case commentsFailed
+    case commentsSessionExpired
 
     var errorDescription: String? {
         switch self {
@@ -18,10 +21,16 @@ enum MojiAPIError: LocalizedError, Sendable {
             "服务器返回 HTTP \(code)。"
         case .rateLimited:
             "请求过于频繁，请稍后再试。"
+        case .requestBlocked:
+            "请求被 MOJi 安全网关拒绝（HTTP 403），请稍后重试。"
         case .missingWord:
             "没有找到该词条的详情。"
+        case .commentsFailed:
+            "评论暂时无法载入，请稍后重试。"
+        case .commentsSessionExpired:
+            "登录状态已失效，请重新登录后查看评论。"
         case let .authenticationFailed(message):
-            message ?? "登录失败，请检查邮箱和密码。"
+            message ?? "登录未成功，请稍后重试。"
         }
     }
 }
@@ -52,10 +61,9 @@ actor MojiAPIClient {
             configuration.timeoutIntervalForResource = 15
             configuration.waitsForConnectivity = true
             configuration.requestCachePolicy = .reloadRevalidatingCacheData
-            configuration.httpAdditionalHeaders = [
-                "Accept": "application/json",
-                "User-Agent": "MojiQuickLook/0.1 (macOS; personal read-only client)"
-            ]
+            // Use URLSession's native User-Agent. The former custom value is
+            // rejected by MOJi's edge gateway before requests reach the API.
+            configuration.httpAdditionalHeaders = ["Accept": "application/json"]
             self.session = URLSession(configuration: configuration)
         }
     }
@@ -70,8 +78,13 @@ actor MojiAPIClient {
         guard let response = response as? HTTPURLResponse else {
             throw MojiAPIError.invalidResponse
         }
+        if let error = Self.transportError(for: response) { throw error }
         guard (200..<300).contains(response.statusCode) else {
-            throw MojiAPIError.authenticationFailed(Self.errorMessage(from: data))
+            if [400, 401, 403].contains(response.statusCode),
+               let message = Self.errorMessage(from: data) {
+                throw MojiAPIError.authenticationFailed(message)
+            }
+            throw MojiAPIError.httpStatus(response.statusCode)
         }
 
         do {
@@ -159,6 +172,53 @@ actor MojiAPIClient {
         searchCache.removeAll()
         detailCache.removeAll()
         relatedCache.removeAll()
+    }
+
+    func wordComments(id: String, page: Int = 1) async throws -> CommentPage {
+        let request = try Self.wordCommentsRequest(
+            id: id, page: page, deviceID: deviceID, sessionToken: sessionToken
+        )
+        let (data, response) = try await session.data(for: request)
+        guard let response = response as? HTTPURLResponse else {
+            throw MojiAPIError.invalidResponse
+        }
+        let parseCode = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["code"] as? Int
+        if let error = Self.transportError(for: response) { throw error }
+        if response.statusCode == 401 || parseCode == 209 {
+            throw MojiAPIError.commentsSessionExpired
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            throw MojiAPIError.httpStatus(response.statusCode)
+        }
+        let envelope = try decoder.decode(CommentListResponse.self, from: data)
+        if [209, 401, 403].contains(envelope.result.code) {
+            throw MojiAPIError.commentsSessionExpired
+        }
+        guard envelope.result.code == 200, let page = envelope.result.result else {
+            throw MojiAPIError.commentsFailed
+        }
+        return page
+    }
+
+    static func wordCommentsRequest(
+        id: String, page: Int, deviceID: String, sessionToken: String?
+    ) throws -> URLRequest {
+        guard let url = URL(string: "https://api.mojidict.com/parse/functions/comment-list") else {
+            throw MojiAPIError.invalidURL
+        }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        request.httpMethod = "POST"
+        request.setValue("application/json;charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("E62VyFVLMiW7kvbtVq3p", forHTTPHeaderField: "X-Parse-Application-Id")
+        request.setValue("i1.19.4", forHTTPHeaderField: "X-Parse-Client-Version")
+        request.setValue(deviceID, forHTTPHeaderField: "X-Parse-Installation-Id")
+        request.setValue(sessionToken, forHTTPHeaderField: "X-Parse-Session-Token")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "page": page, "targetId": id, "targetType": 102, "limit": 20,
+            "subLimit": 3, "g_langEnv": "ja_zh-CN", "g_ver": "v9.0.1", "g_os": "iOS"
+        ])
+        return request
     }
 
     static func searchURL(for text: String) throws -> URL {
@@ -278,13 +338,23 @@ actor MojiAPIClient {
         guard let response = response as? HTTPURLResponse else {
             throw MojiAPIError.invalidResponse
         }
-        if response.statusCode == 429 {
-            throw MojiAPIError.rateLimited
-        }
+        if let error = Self.transportError(for: response) { throw error }
         guard (200..<300).contains(response.statusCode) else {
             throw MojiAPIError.httpStatus(response.statusCode)
         }
         return data
+    }
+
+    private static func transportError(for response: HTTPURLResponse) -> MojiAPIError? {
+        if response.statusCode == 429 { return .rateLimited }
+        if response.statusCode == 403 {
+            let type = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+            if type.contains("text/html")
+                || response.value(forHTTPHeaderField: "X-Tengine-Error") != nil {
+                return .requestBlocked
+            }
+        }
+        return nil
     }
 
     private static func applyWebHeaders(to request: inout URLRequest, deviceID: String) {

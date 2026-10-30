@@ -25,6 +25,7 @@ MOJi/Krosea に帰属します。本プロジェクトは非公式の個人向�
 - ツールバーの戻る／進むボタンと、`⌘[`／`⌘]` ショートカットに対応
 - 単語ページの末尾から、対応する MOJi 公式ページ、macOS の「辞書」、Forvo の発音ページを表示可能
 - メールアドレスによるネイティブログインに対応し、ログイン状態とトークンを macOS キーチェーンへ暗号化して保存
+- 単語ごとのコメントをページ送りで表示し、投稿者・日時・いいね数・返信プレビュー（最大 3 件）を確認可能
 - 古くなったリクエストを自動的にキャンセル
 - 検索結果と単語の詳細はメモリ上だけにキャッシュ
 - ブラウザの Cookie、Local Storage、パスワード、トークンは読み取りません
@@ -33,12 +34,15 @@ MOJi/Krosea に帰属します。本プロジェクトは非公式の個人向�
 
 ## 利用する API
 
-現在は MOJi の Web サイトで使用されている、以下の 4 つのエンドポイントを利用しています。
+現在は MOJi の Web サイトとモバイルアプリで使用されている、以下のエンドポイントを利用しています。
 
 - `GET /app/mojidict/api/v2/search/all`
 - `GET /app/mojidict/api/v1/word/detailInfo`
 - `POST /app/mojidict/api/v1/word/related`
 - `POST /app/mojidict/api/v1/account/unifiedLogin`
+- `POST /parse/functions/comment-list`
+
+コメントは 20 件ずつ読み込み、ログイン済みの場合は既存のセッションを `X-Parse-Session-Token` として使用します。公開コメントはログインなしでも取得できます。投稿・返信・いいねの送信には対応していません。
 
 いずれも非公開かつ安定性が保証されていないプライベート API です。予告なく変更される可能性があり、レート制限やセキュリティ検証の影響を受ける場合もあります。本プロジェクトは個人での研究・利用を目的としており、大量取得、再配布、商用利用には適していません。
 
@@ -67,8 +71,8 @@ swift test
 `Info.plist` のアプリバージョンと一致する `v*` タグを push すると、GitHub Actions がテスト、パッケージ作成、署名の検証を行い、バージョン付きの `.zip` と SHA-256 チェックサムを GitHub Releases に公開します。
 
 ```bash
-git tag v0.14.4
-git push origin v0.14.4
+git tag v0.15.0
+git push origin v0.15.0
 ```
 
 タグがすでに存在する場合は、GitHub の Actions ページから `Build and Release` を手動実行し、対象のタグを入力することで再ビルドまたは Release の添付ファイル更新ができます。通常のブランチへの push では Release は作成されません。

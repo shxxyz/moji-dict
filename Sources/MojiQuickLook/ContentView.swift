@@ -132,6 +132,9 @@ struct ContentView: View {
                     }
 
                     if result.category == .word {
+                        CommentsSection(wordID: result.targetId, accountSession: account.session)
+                            .padding(.top, 30)
+
                         ExternalLookupButtons(
                             result: result,
                             headword: model.detail?.word?.spell ?? result.headword

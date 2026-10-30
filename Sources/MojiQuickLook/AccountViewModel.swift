@@ -17,14 +17,14 @@ final class AccountViewModel: ObservableObject {
     init(api: MojiAPIClient = .shared) {
         self.api = api
         if let persisted = AccountSessionStore.load() {
-            session = AccountSession(
-                displayName: persisted.displayName,
-                email: persisted.email
-            )
             Task {
                 await api.restoreSession(
                     token: persisted.sessionToken,
                     deviceID: persisted.deviceID
+                )
+                session = AccountSession(
+                    displayName: persisted.displayName,
+                    email: persisted.email
                 )
             }
         }
@@ -76,9 +76,9 @@ final class AccountViewModel: ObservableObject {
     func logout() {
         errorMessage = nil
         AccountSessionStore.delete()
-        session = nil
         Task {
             await api.logout()
+            session = nil
         }
     }
 

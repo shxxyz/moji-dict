@@ -155,7 +155,7 @@ actor ForvoClient {
             configuration.httpAdditionalHeaders = [
                 "Accept": "text/html,application/xhtml+xml",
                 "Accept-Language": "ja,en;q=0.8",
-                "User-Agent": "Moji-Dictionary/0.14.4 (macOS; personal non-commercial client)"
+                "User-Agent": "Moji-Dictionary/0.15.0 (macOS; personal non-commercial client)"
             ]
             self.session = URLSession(configuration: configuration)
         }
